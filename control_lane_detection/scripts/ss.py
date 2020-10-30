@@ -13,6 +13,7 @@ from utils_2 import purePursuit
 class IMGParser:
     def __init__(self):
         self.img = None
+        
         #region fixed code cam set
         self.cameraFeed = True
         self.videoPath = "/scripts/drive_video/testReal.bag" #10 70 0 100, (120, 135, 130)
@@ -22,10 +23,10 @@ class IMGParser:
         self.frameWidth = 640
         self.frameHeight = 320
         #endregion
-
         self.set_cam()
         self.saving_ret = False
         self.saving_img = None
+        # self.pixel_img=None
         self.keep_reading = True
 
         #region Trackbar side
@@ -52,9 +53,11 @@ class IMGParser:
         #region lane curve data
         self.ym_per_pix = float(0.6) / float(self.frameHeight)  # front meter / Hight pixels
         self.xm_per_pix = float(0.8) / float(self.frameWidth)  # lane side meter / Width pixel
+
         #endregion
-
-
+        self.start=0
+        self.pix_white=0
+        
     def set_cam(self):
         if self.cameraFeed:
             self.cam = cv2.VideoCapture(self.cameraNo)
@@ -62,7 +65,7 @@ class IMGParser:
             self.cam.set(4, self.cameraHeight)
             self.cam.set(28, 0)
         else:
-            self.cam = cv2.VideoCapture(self.videoPath)
+            self.cam = cv2.VideoCapture(-1)
         
     def get_image(self):
         ret, image = self.cam.read()
@@ -78,13 +81,12 @@ class IMGParser:
     def get_image_continue(self):
         while(self.keep_reading):
             self.saving_ret, self.saving_img = self.get_image()
+            # self.pixel_img=self.get_image()
             time.sleep(0.03)
-        
 
     def image_process(self, imgMat):
         # Apply HLS color filtering to filter out white lane lines
         hlsMat = cv2.cvtColor(imgMat, cv2.COLOR_BGR2HLS)
-        
         # lower_white = np.array([src[0], src[1], src[2]])
         lower_white = np.array([210, 90, 194])
         upper_white = np.array([255, 255, 255])
@@ -100,8 +102,14 @@ class IMGParser:
         imgMat = cv2.GaussianBlur(imgMat,(3, 3), 0)
         #return imgMat
         # edge
+        pix_white=0
+        pix_white=cv2.countNonZero(imgMat)
         imgMat = cv2.Canny(imgMat, 40, 60)
-        return imgMat
+        # cv2.imshow("aaa", imgMat)
+        print(pix_white)
+
+        return imgMat ,pix_white
+
 
     def drawPoints(self, img, src):
         #drawing circles on frame
@@ -362,8 +370,7 @@ class IMGParser:
     def valTrackbar_speed(self):
         return cv2.getTrackbarPos("Speed", self.trackbar_name)
     #endregion
-
-if __name__ == '__main__':
+    def run(self):
         rp= rospkg.RosPack()
         currentPath = rp.get_path("control_lane_detection")
         rospy.init_node('lane_detector',  anonymous=True)
@@ -372,7 +379,7 @@ if __name__ == '__main__':
         #intialTracbarVals = [10,70,0,100]
         intialCarRef = 0
     
-        ctrl_lat = purePursuit(lfd=0.8)
+        ctrl_lat = purePursuit(lfd=0.8)  
         image_parser = IMGParser()
         image_parser.initializeTrackbars(intialTracbarVals, intialCarRef)
         src = image_parser.valTrackbars()
@@ -394,31 +401,24 @@ if __name__ == '__main__':
             if not image_parser.saving_ret: continue
             image_parser.saving_ret = False
             img_wlane = image_parser.saving_img
+            # img_pixel=image_parser.pixel_img
             imgWarpPoints = img_wlane
             
             fps = 1 / (curTime - prevTime)
             prevTime = curTime
             fps_str = "FPS: %0.1f" % fps
             
-            img_wlane = image_parser.image_process(img_wlane)
-            roi=[
-                (0, 320),
-                (0, 160),
-                (640, 160),
-                (640, 320)
-            ]
-
-            vertices=np.array([roi], np.int32)
-            mask=np.zeros_like(img_wlane)
-            masked_image=cv2.bitwise_and(img_wlane,mask)
-            cv2.imshow('crop image', masked_image)
+            img_wlane,pix_white = image_parser.image_process(img_wlane)
+            # img_pixel=image_parser.pixel_image_process(img_pixel)
+            
+            cv2.imshow("aaa", img_wlane)
             
             #region trackbar read
             src = image_parser.valTrackbars()
             if image_parser.trackbar_change_flag:
                 image_parser.trackbar_change_flag = False
                 print("Recalculate perspectiveWarp.")
-                image_parser.perspectiveWarp_init(src)
+                image_paser.perspectiveWarp_init(src)
             
             if image_parser.speed_change_flag:
                 image_parser.speed_change_flag = False
@@ -439,12 +439,14 @@ if __name__ == '__main__':
                 deviation, directionDev = image_parser.offCenter(draw_info)
                 
                 #Servo Steer Level: 0.15(L) - 0.5304(C) - 0.85(R)
-                #driving Level: -3000 ~ 3000 RPM
-                dst_steer_level = 0.5304 + float(deviation)*2.1
+                #driving Level: -3000 ~ 3000 RPMzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzc nnnnnn
+                dst_steer_level = 0.5304
                 fps_str += " calAng: %5.2f" % deviation   
                 fps_str += " dstStr: %5.2f" % dst_steer_level   
                 
                 ctrl_lat.pub_cmd(0*1000, dst_steer_level)
+
+
             except:
                 fps_str += " Lane Error"
                 pass
@@ -453,10 +455,23 @@ if __name__ == '__main__':
     
             #cv2.imshow("Pipe Line 1", imgSliding)
             cv2.imshow(image_parser.trackbar_name, imgWarpPoints)
-    
+            if pix_white < 1000.0:
+                print("break")
+                ctrl_lat.pub_cmd(0*1000, dst_steer_level)
+                break
             if cv2.waitKey(1) == 13: break
     
-            continue
+            
         image_parser.keep_reading = False
         time.sleep(0.5)
         cam_thread.join()
+
+
+
+if __name__ == '__main__':
+    try:
+        test_track =IMGParser()
+    except rospy.ROSInterruptException:
+        pass
+ 
+        

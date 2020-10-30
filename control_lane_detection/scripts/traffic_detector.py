@@ -12,7 +12,7 @@ from cv_bridge import CvBridgeError
 
 class TRAFFICDetector:
     def __init__(self):
-        self.image_sub=rospy.Subscriber("/image_jpeg/compressed", CompressedImage, self.callback)
+        self.image_sub=rospy.Subscriber("/usb_cam/image_raw/compressed/compressed", CompressedImage, self.callback)
         self.traffic_msg=String()
         self.signal_pub=rospy.Publisher("/traffic_light", String, queue_size=10)
         self.img_hsv=None
@@ -28,43 +28,42 @@ class TRAFFICDetector:
 
     def detect_signal(self):
         h=self.img_hsv.shape[0]
+        self.ck=0
+        self.count=0
+        self.check=0
 
-        lower_sig_y=np.array([20, 235, 235])
-        upper_sig_y=np.array([30, 255, 255])
-
-        lower_sig_r=np.array([0, 240, 240])
-        upper_sig_r=np.array([10, 255, 255])
-
-        lower_sig_g=np.array([50, 230, 230])
-        upper_sig_g=np.array([70, 255, 255])
+        lower_sig_b=np.array([[84, 0, 0]])
+        upper_sig_b=np.array([123, 255, 255])
+        lower_sig_r=np.array([153, 0, 0])
+        upper_sig_r=np.array([180, 255, 255])
 
         img_r=cv2.inRange(self.img_hsv, lower_sig_r, upper_sig_r)
-        img_y=cv2.inRange(self.img_hsv, lower_sig_y, upper_sig_y)
-        img_g=cv2.inRange(self.img_hsv, lower_sig_g, upper_sig_g)
-
-        img_r[int(h/3):,:]=0
-        img_y[int(h/3):,:]=0
-        img_g[int(h/3):,:]=0
+        img_b=cv2.inRange(self.img_hsv, lower_sig_b, upper_sig_b)
 
         pix_r=cv2.countNonZero(img_r)
-        pix_y=cv2.countNonZero(img_y)
-        pix_g=cv2.countNonZero(img_g)
+        pix_b=cv2.countNonZero(img_b)
 
-        pix_max=np.max([pix_r, pix_y, pix_g])
-        idx_s=np.argmax([pix_r, pix_y, pix_g])
-
-        if pix_max>40:
-            if idx_s==0:
-                self.traffic_msg.data="RED"
-            elif idx_s==1:
-                self.traffic_msg.data="YELLOW"
-            else:
-                self.traffic_msg.data="GREEN"
-        else:
-            self.traffic_msg.data="None"
+        print("RED:",pix_r)
+        print("BLUE:", pix_b)
+    ################################################# 
+        if pix_r>18000:
+            while(self.count<5):
+                self.count=self.count+1
+                print(self.count,"RED")
+                if(self.count==5):
+                    break
+                # if idx_s==0:    
+                    # self.traffic_msg.data="RED"
+                # elif idx_s==1:
+                    # self.traffic_msg.data="YELLOW"
+                # else:
+                    # self.traffic_msg.data="GREEN"
+            # else:
+            #     self.traffic_msg.data="None"
 
     def pub_signal(self):
         self.signal_pub.publish(self.traffic_msg)
+        #print(self.traffic_msg)
 
 if __name__=='__main__':
     rospy.init_node("traffic_detector", anonymous=True)
