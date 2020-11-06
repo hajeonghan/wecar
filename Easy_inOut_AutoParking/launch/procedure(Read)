@@ -1,0 +1,6 @@
+$ roscore
+$ roslaunch rplidar_ros rplidar.launch
+$ roslaunch vesc_driver vesc_driver_node.launch
+$ roslaunch usb_cam usb_cam-test.launch
+$ rosrun image_transport republish raw in:=usb_cam/image_raw out:=usb_cam/image_raw/compressed(image type transport)
+
